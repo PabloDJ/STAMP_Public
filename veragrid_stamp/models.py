@@ -81,13 +81,15 @@ def get_stamp_synchronous_generator_rms(vfactory: Any, name: str = "STAMP_SG1") 
     return template
 
 
-def get_stamp_gfor_rms(vfactory: Any, name: str = "STAMP_GFOR1") -> Any:
+def get_stamp_gfor_rms(vfactory: Any, name: str = "STAMP_GFOR1",
+                       reference_omega: Any | None = None) -> Any:
     """Return the named-equation STAMP GFOR model."""
     from .source_linear_converters import build_stamp_source_linear_converter
-    return build_stamp_source_linear_converter(vfactory, STAMP_GFOR, name)
+    return build_stamp_source_linear_converter(vfactory, STAMP_GFOR, name, reference_omega)
 
 
-def get_stamp_gfol_rms(vfactory: Any, name: str = "STAMP_GFOL2") -> Any:
+def get_stamp_gfol_rms(vfactory: Any, name: str = "STAMP_GFOL2",
+                       reference_omega: Any | None = None) -> Any:
     """Return the named-equation STAMP GFOL model."""
     from .source_linear_converters import build_stamp_source_linear_converter
-    return build_stamp_source_linear_converter(vfactory, STAMP_GFOL, name)
+    return build_stamp_source_linear_converter(vfactory, STAMP_GFOL, name, reference_omega)

@@ -97,13 +97,31 @@ def build_stamp_generator_rms(vf: Any, p: StampSynchronousGeneratorParameters, n
     # IEEEG1 governor and turbine.
     xgov, xt4, xt5, xt6, xt7 = [vf.add_var(f"{name}.{n}") for n in ("gov_x1","turbx1","turbx2","turbx3","turbx4")]
     pref = vf.add_var(f"{name}.Pref")
-    # This is the named cascade form of the exact IEEEG1 transfer function in
-    # generate_SG_pu.m.  It is dynamically equivalent to MATLAB's anonymous
-    # tf2ss companion realization, but keeps every steam-path signal explicit.
-    tm = (c(p.turbine_k1+p.turbine_k2)*xt4
-          + c(p.turbine_k3+p.turbine_k4)*xt5
-          + c(p.turbine_k5+p.turbine_k6)*xt6
-          + c(p.turbine_k7+p.turbine_k8)*xt7)
+    # Exact named canonical realization of STAMP's MATLAB tf2ss blocks.  The
+    # states are not physical cascade outputs: tf2ss returns controllable
+    # companion coordinates.  Derive the coefficients from the IEEEG1 time
+    # constants and steam fractions so parameter changes remain transparent.
+    lag_polynomials = [np.asarray([time_constant, 1.0]) for time_constant in
+                       (p.turbine_t4, p.turbine_t5, p.turbine_t6, p.turbine_t7)]
+    turbine_den = np.asarray([1.0])
+    for polynomial in lag_polynomials:
+        turbine_den = np.polymul(turbine_den, polynomial)
+    turbine_num = np.zeros_like(turbine_den)
+    stage_gains = (p.turbine_k1+p.turbine_k2, p.turbine_k3+p.turbine_k4,
+                   p.turbine_k5+p.turbine_k6, p.turbine_k7+p.turbine_k8)
+    for stage, gain in enumerate(stage_gains):
+        remaining = np.asarray([1.0])
+        for polynomial in lag_polynomials[stage+1:]:
+            remaining = np.polymul(remaining, polynomial)
+        turbine_num[-remaining.size:] += gain*remaining
+    turbine_num = turbine_num/turbine_den[0]
+    turbine_den = turbine_den/turbine_den[0]
+    direct_gain = turbine_num[0]
+    turbine_c = turbine_num[1:]-direct_gain*turbine_den[1:]
+    valve = xgov/c(p.governor_t3)
+    tm = (sum((c(coefficient)*state for coefficient, state in
+               zip(turbine_c, (xt4, xt5, xt6, xt7))), c(0))
+          + c(direct_gain)*valve)
     mech_eq = (tm / omega - te - c(p.damping_d)*(omega-c(1))) / c(2*p.inertia_h)
 
     states = [igq, igd, isq, isd, ifd, ikd, ik1q, ik2q, omega, vfilt, xlead, efd, xgov, xt4, xt5, xt6, xt7]
@@ -114,9 +132,10 @@ def build_stamp_generator_rms(vf: Any, p: StampSynchronousGeneratorParameters, n
         -vfilt/c(p.exciter_tr)+d_vsg_mag,
         -c(exc_a1)*xlead-c(exc_a0)*efd+vc,
         xlead,
-        (pref+(c(1)-omega)/c(p.governor_r)-xgov)/c(p.governor_t3),
-        (xgov-xt4)/c(p.turbine_t4), (xt4-xt5)/c(p.turbine_t5),
-        (xt5-xt6)/c(p.turbine_t6), (xt6-xt7)/c(p.turbine_t7),
+        -xgov/c(p.governor_t3)+pref-(omega-c(1))/c(p.governor_r),
+        -sum((c(turbine_den[index+1])*state for index, state in
+              enumerate((xt4, xt5, xt6, xt7))), c(0))+valve,
+        xt4, xt5, xt6,
     ]
     power_p = c(1.5)*(vgq*igq+vgd*igd)
     power_q = c(1.5)*(vgq*igd-vgd*igq)
@@ -142,7 +161,8 @@ def build_stamp_generator_rms(vf: Any, p: StampSynchronousGeneratorParameters, n
     init = {igq: igq0, igd: igd0, isq: isq0, isd: isd0,
             ifd: ifd0, ikd:c(0), ik1q:c(0), ik2q:c(0), omega:c(1),
             vfilt:c(0), xlead:c(0), efd:c(0),
-            xgov:te, xt4:te, xt5:te, xt6:te, xt7:te}
+            xgov:c(p.governor_t3)*te, xt4:c(0), xt5:c(0), xt6:c(0),
+            xt7:te/c(turbine_den[-1])}
     events = {rotor_angle: angle0, vmag0:vsg_mag,
               vf0:c(rotor.rf)*ifd, pref:te}
     block = Block(state_vars=states, state_eqs=state_eqs, algebraic_vars=[pg,qg],

@@ -8,7 +8,8 @@ from .bases import RMS_LL_TO_PEAK_LN
 from .parameters import OMEGA_BASE, StampConverterParameters
 
 
-def build_stamp_source_linear_converter(vf: Any, p: StampConverterParameters, name: str) -> Any:
+def build_stamp_source_linear_converter(vf: Any, p: StampConverterParameters, name: str,
+                                        reference_omega: Any | None = None) -> Any:
     from VeraGridEngine.Devices.Dynamic.rms_template import RmsModelTemplate
     from VeraGridEngine.Utils.Symbolic.block import Block
     from VeraGridEngine.Utils.Symbolic import symbolic as sym
@@ -73,6 +74,8 @@ def build_stamp_source_linear_converter(vf: Any, p: StampConverterParameters, na
     dql=c(1.5)*(-udl0*igq_m+uql0*igd_m+igdl0*uq_m-igql0*ud_m)
 
     kp_i=c(p.current_kp); ki_i=c(p.current_ki)
+    reference_speed = c(1) if reference_omega is None else reference_omega
+    reference_frame_speed = wb*(reference_speed-c(1))
     controller_states=[]; controller_eqs=[]
     if p.mode == "GFOR":
         pf=vf.add_var(f"{name}.p_filt_x"); qf=vf.add_var(f"{name}.q_filt_x")
@@ -88,8 +91,8 @@ def build_stamp_source_linear_converter(vf: Any, p: StampConverterParameters, na
         isq_ref=kp_v*(duq_ref-uq_m)+ki_v*xi_uq+wb*cac*ud_m+igq_ff/c(p.current_feedforward_tau)
         isd_ref=kp_v*(dud_ref-ud_m)+ki_v*xi_ud-wb*cac*uq_m+igd_ff/c(p.current_feedforward_tau)
         controller_states=[theta,pf,qf,xi_uq,xi_ud,igd_ff,igq_ff]
-        controller_eqs=[omega_rad,-pf/c(p.frequency_droop_tau)+dpl,
-                        -qf/c(p.voltage_droop_tau)+dql,duq_ref-uq_m,dud_ref-ud_m,
+        controller_eqs=[omega_rad-reference_frame_speed,-pf/c(p.frequency_droop_tau)+dpl,
+                        -qf/c(p.voltage_droop_tau)-dql,duq_ref-uq_m,dud_ref-ud_m,
                         -igd_ff/c(p.current_feedforward_tau)+igd_m,
                         -igq_ff/c(p.current_feedforward_tau)+igq_m]
     else:
@@ -113,7 +116,7 @@ def build_stamp_source_linear_converter(vf: Any, p: StampConverterParameters, na
         isq_ref=kp_p*(dpref-dpl)+ki_p*xp
         isd_ref=kp_p*(dqref-dql)+ki_p*xq
         controller_states=[pll,theta,wf,qf,xp,xq]
-        controller_eqs=[ud_m,wb*omega_pu,-wf/c(p.frequency_droop_tau)+wb*omega_pu,
+        controller_eqs=[ud_m,wb*omega_pu-reference_frame_speed,-wf/c(p.frequency_droop_tau)+wb*omega_pu,
                         -qf/c(p.voltage_droop_tau)+dumag,dpref-dpl,dqref-dql]
 
     dvcql=kp_i*(isq_ref-isq_m)+ki_i*xi_iq+wb*lc*isd_m+uq_m

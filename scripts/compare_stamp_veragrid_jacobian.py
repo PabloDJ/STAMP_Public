@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import argparse
 import sys
 
 import numpy as np
@@ -27,13 +28,18 @@ def canonical_veragrid_name(name: str) -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--impedance-loads", action="store_true",
+                        help="Use voltage-dependent impedance-equivalent RMS loads")
+    args = parser.parse_args()
     from VeraGridEngine.Devices.Events.rms_events_group import RmsEventsGroup
     from VeraGridEngine.Simulations.PowerFlow.power_flow_driver import PowerFlowDriver
     from VeraGridEngine.Simulations.Rms.rms_options import RmsOptions
     from VeraGridEngine.Simulations.Rms.problems.rms_problem_dae import RmsProblemDae
     from VeraGridEngine.Simulations.SmallSignalStabilityRms.small_signal_driver import compute_state_matrix
 
-    grid = build_stamp_wscc_grid()
+    grid = build_stamp_wscc_grid(impedance_loads=args.impedance_loads)
+    print(f"VeraGrid RMS load formulation: {'impedance' if args.impedance_loads else 'constant power'}")
     pf = PowerFlowDriver(grid, power_flow_options())
     pf.run()
     options = RmsOptions(time_step=0.001, simulation_time=1.0, tolerance=1e-8, max_iter=1000)
@@ -166,7 +172,15 @@ def main() -> None:
     # Use the independently checked numerical Jacobian for model comparison;
     # the native matrix above is retained and reported as a compiler audit.
     a_vg_ordered = a_numerical[np.ix_(order, order)]
+    a_vg_native_ordered = a_veragrid[np.ix_(order, order)]
     a_stamp_devices = a_stamp[30:, 30:]
+    # VeraGrid eliminates its network algebraically.  The apples-to-apples
+    # STAMP matrix therefore sets the 30 network derivatives to zero and
+    # eliminates those states by a Schur complement.
+    a_stamp_network = a_stamp[:30, :30]
+    a_stamp_quasistatic = (a_stamp_devices
+                           - a_stamp[30:, :30]
+                           @ np.linalg.solve(a_stamp_network, a_stamp[:30, 30:]))
     # STAMP shifts the global network q-d reference to the SG rotor. VeraGrid
     # keeps the slack-bus voltage at angle zero. Rotate only states expressed
     # in the global network frame before comparing matrix entries; controller
@@ -191,13 +205,29 @@ def main() -> None:
         pair = [name_index[q_name], name_index[d_name]]
         transform[np.ix_(pair, pair)] = rotation
     a_vg_ordered = transform @ a_vg_ordered @ transform.T
+    a_vg_native_ordered = transform @ a_vg_native_ordered @ transform.T
     difference = a_vg_ordered - a_stamp_devices
+    quasistatic_difference = a_vg_ordered - a_stamp_quasistatic
+    native_quasistatic_difference = a_vg_native_ordered - a_stamp_quasistatic
 
     print(f"matrix shapes: VeraGrid={a_veragrid.shape}, STAMP={a_stamp.shape}, compared={difference.shape}")
     print(f"global q-d reference rotation applied: {reference_shift:.12g} rad")
     print(f"max absolute device-block error: {np.max(np.abs(difference)):.12g}")
     print(f"RMS device-block error: {np.sqrt(np.mean(difference * difference)):.12g}")
     print(f"entries within 1e-6: {np.mean(np.abs(difference) <= 1e-6):.1%}")
+    print(f"quasi-static-network max error: {np.max(np.abs(quasistatic_difference)):.12g}")
+    print(f"quasi-static-network RMS error: "
+          f"{np.sqrt(np.mean(quasistatic_difference * quasistatic_difference)):.12g}")
+    print(f"native quasi-static-network max error: "
+          f"{np.max(np.abs(native_quasistatic_difference)):.12g}")
+    print(f"native quasi-static-network RMS error: "
+          f"{np.sqrt(np.mean(native_quasistatic_difference * native_quasistatic_difference)):.12g}")
+    stamp_qs_modes = np.linalg.eigvals(a_stamp_quasistatic)
+    veragrid_modes = np.linalg.eigvals(a_vg_ordered)
+    print(f"STAMP quasi-static rightmost mode: "
+          f"{stamp_qs_modes[np.argmax(stamp_qs_modes.real)]:.12g}")
+    print(f"unstable modes: VeraGrid={np.count_nonzero(veragrid_modes.real > 1e-8)}, "
+          f"STAMP quasi-static={np.count_nonzero(stamp_qs_modes.real > 1e-8)}")
     print("largest coefficient differences:")
     for flat in np.argsort(np.abs(difference), axis=None)[-20:][::-1]:
         row, column = np.unravel_index(flat, difference.shape)
@@ -210,9 +240,14 @@ def main() -> None:
         err = difference[section, section]
         print(f"{label}: max={np.max(np.abs(err)):.9g}, RMS={np.sqrt(np.mean(err*err)):.9g}")
 
-    output = ROOT / "STAMP/02_results/comparison/WSCC_SG_GFOR_GFOL_jacobian_difference.csv"
+    suffix = "_impedance_loads" if args.impedance_loads else ""
+    output = ROOT / f"STAMP/02_results/comparison/WSCC_SG_GFOR_GFOL_jacobian_difference{suffix}.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
     np.savetxt(output, difference, delimiter=",")
+    np.savetxt(output.with_name(f"WSCC_SG_GFOR_GFOL_veragrid_reduced_A{suffix}.csv"),
+               a_vg_ordered, delimiter=",")
+    np.savetxt(output.with_name("WSCC_SG_GFOR_GFOL_STAMP_quasistatic_A.csv"),
+               a_stamp_quasistatic, delimiter=",")
     print(f"wrote {output}")
 
 
