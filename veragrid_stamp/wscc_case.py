@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from .models import get_stamp_gfol_rms, get_stamp_gfor_rms, get_stamp_synchronous_generator_rms
 from .parameters import STAMP_GFOL, STAMP_GFOR, STAMP_SG, SYSTEM_BASE_MVA
 
 
-VERAGRID_IEEE9_PATH = (
-    "/home/pablo/Desktop/eroots/VeraGrid_TenSyGrid/Grids_and_profiles/grids/"
-    "IEEE_9_Christoph.gridcal"
-)
+VERAGRID_ROOT = Path(os.environ.get(
+    "VERAGRID_ROOT", "/home/pablo/Desktop/eroots/VeraGrid"))
+VERAGRID_IEEE9_PATH = str(
+    VERAGRID_ROOT / "Grids_and_profiles/grids/IEEE_9_Christoph.gridcal")
 
 
 STAMP_LINES = (

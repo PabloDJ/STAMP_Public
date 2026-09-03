@@ -1,0 +1,167 @@
+job_id=82086
+node=cetus
+CPU(s):                                  40
+On-line CPU(s) list:                     0-39
+Model name:                              Intel(R) Xeon(R) CPU E5-2630 v4 @ 2.20GHz
+Thread(s) per core:                      2
+Core(s) per socket:                      10
+Socket(s):                               2
+CPU(s) scaling MHz:                      45%
+NUMA node0 CPU(s):                       0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38
+NUMA node1 CPU(s):                       1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39
+[Warning: Unable to locate a personal folder for $documents/MATLAB.] 
+[Warning: Unable to locate a personal folder for $documents/MATLAB.] 
+[> In userpath (line 27)
+In pathdef (line 2832)
+In benchmark_wscc_stamp (line 3)] 
+Running MATPOWER power-flow
+System power base is 100MVA
+[Warning: The following error was caught while executing 'osqp' class
+destructor:
+Undefined function 'osqp_mex' for input arguments of type 'char'.
+
+Error in osqp/delete (line 40)
+            osqp_mex('delete', this.objectHandle);
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error in osqp (line 34)
+            this.objectHandle = osqp_mex('new', varargin{:});
+            ^^^^^^^^^^^^^^^^^
+Error in have_feature_osqp (line 23)
+        o = osqp();
+            ^^^^^^
+Error in have_feature (line 135)
+            [TorF, vstr, rdate] = feval(fcn);
+                                  ^^^^^^^^^^
+Error in mpoption_info_osqp (line 31)
+if have_feature('osqp')
+   ^^^^^^^^^^^^^^^^^^^^
+Error in mpoption>mpoption_default (line 1638)
+            opt = nested_struct_copy(opt, feval(fname, 'D'));
+                                          ^^^^^^^^^^^^^^^^^
+Error in mpoption (line 643)
+    opt = mpoption_default();
+          ^^^^^^^^^^^^^^^^^^
+Error in runpf (line 88)
+            mpopt = mpoption;       %% use default options
+                    ^^^^^^^^
+Error in PF_results (line 61)
+    [~, bus, gen, ~, ~, ~] = runpf(mpc);
+                             ^^^^^^^^^^
+Error in run (line 100)
+evalin('caller', strcat(scriptStem, ';'));
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error in benchmark_wscc_stamp (line 16)
+run PF_results.m
+^] 
+[> In osqp (line 34)
+In have_feature_osqp (line 23)
+In have_feature (line 135)
+In mpoption_info_osqp (line 31)
+In mpoption>mpoption_default (line 1638)
+In mpoption (line 643)
+In runpf (line 88)
+In PF_results (line 61)
+In run (line 100)
+In benchmark_wscc_stamp (line 16)] 
+OSQP Error!
+
+MATPOWER Version 7.1, 08-Oct-2020 -- AC Power Flow (Newton)
+
+Newton's method power flow (power balance, polar) converged in 3 iterations.
+
+Converged in 0.65 seconds
+================================================================================
+|     System Summary                                                           |
+================================================================================
+
+How many?                How much?              P (MW)            Q (MVAr)
+---------------------    -------------------  -------------  -----------------
+Buses              6     Total Gen Capacity     765.0        -765.0 to 765.0
+Generators         3     On-line Capacity       765.0        -765.0 to 765.0
+Committed Gens     3     Generation (actual)    317.7              -7.5
+Loads              3     Load                   315.0             115.0
+  Fixed            3       Fixed                315.0             115.0
+  Dispatchable     0       Dispatchable          -0.0 of -0.0      -0.0
+Shunts             0     Shunt (inj)             -0.0               0.0
+Branches           6     Losses (I^2 * Z)         2.73             18.28
+Transformers       0     Branch Charging (inj)     -              140.8
+Inter-ties         0     Total Inter-tie Flow     0.0               0.0
+Areas              1
+
+                          Minimum                      Maximum
+                 -------------------------  --------------------------------
+Voltage Magnitude   0.999 p.u. @ bus 2          1.032 p.u. @ bus 6   
+Voltage Angle      -4.11 deg   @ bus 2          0.00 deg   @ bus 1   
+P Losses (I^2*R)             -                  0.81 MW    @ line 1-2
+Q Losses (I^2*X)             -                  6.92 MVAr  @ line 1-2
+
+================================================================================
+|     Bus Data                                                                 |
+================================================================================
+ Bus      Voltage          Generation             Load        
+  #   Mag(pu) Ang(deg)   P (MW)   Q (MVAr)   P (MW)   Q (MVAr)
+----- ------- --------  --------  --------  --------  --------
+    1  1.026    0.000*   147.73     10.79       -         -   
+    2  0.999   -4.106       -         -      125.00     50.00 
+    3  1.014   -2.930       -         -       90.00     30.00 
+    4  1.026   -0.962     85.00     -4.38       -         -   
+    5  1.016   -2.819       -         -      100.00     35.00 
+    6  1.032   -0.002     85.00    -13.93       -         -   
+                        --------  --------  --------  --------
+               Total:    317.73     -7.52    315.00    115.00
+
+================================================================================
+|     Branch Data                                                              |
+================================================================================
+Brnch   From   To    From Bus Injection   To Bus Injection     Loss (I^2 * Z)  
+  #     Bus    Bus    P (MW)   Q (MVAr)   P (MW)   Q (MVAr)   P (MW)   Q (MVAr)
+-----  -----  -----  --------  --------  --------  --------  --------  --------
+   1      1      2     89.25     15.37    -88.44    -26.49     0.815      6.92
+   2      1      3     58.48     -4.58    -57.92     -8.85     0.555      3.00
+   3      2      4    -36.56    -23.51     37.01     -5.60     0.450      2.26
+   4      3      6    -32.08    -21.15     32.47    -14.63     0.393      1.71
+   5      4      5     47.99      1.22    -47.79    -15.12     0.193      1.63
+   6      5      6    -52.21    -19.88     52.53      0.70     0.324      2.74
+                                                             --------  --------
+                                                    Total:     2.729     18.28
+To change bus type, run: [results,mpc] = change_bus_type(mpc) or manually edit 'mpc' struct
+[Warning: The following block inputs are not used:
+SG_wref,SG1.vk_d,SG1.vk1_q,SG1.vk2_q.] 
+[> In DynamicSystem/connect (line 270)
+In generate_SG_pu (line 790)
+In generate_elements (line 6)
+In run (line 100)
+In benchmark_wscc_stamp (line 20)] 
+[Warning: The following block outputs are not used:
+SG_ifd,SG_ikd,SG_ikq1,SG_ikq2,SG1.Te.] 
+[> In DynamicSystem/connect (line 275)
+In generate_SG_pu (line 790)
+In generate_elements (line 6)
+In run (line 100)
+In benchmark_wscc_stamp (line 20)] 
+[Warning: The following block inputs are not used:
+GFOR1.P_ref,GFOR1.Q_ref,GFOR1.u_dc_ref.] 
+[> In DynamicSystem/connect (line 270)
+In generate_VSC_pu_with_functions_PEAK (line 957)
+In generate_elements (line 13)
+In run (line 100)
+In benchmark_wscc_stamp (line 20)] 
+[Warning: The following block inputs are not used:
+GFOL2.omega_ref,GFOL2.Umag_ref.] 
+[> In DynamicSystem/connect (line 270)
+In generate_VSC_pu_with_functions_PEAK (line 515)
+In generate_elements (line 13)
+In run (line 100)
+In benchmark_wscc_stamp (line 20)] 
+[Warning: The following block inputs are not used: NET.Rld2,NET.Rld3,SG1.Pref.] 
+[> In DynamicSystem/connect (line 270)
+In benchmark_wscc_stamp (line 23)] 
+STAMP states: 88
+STAMP setup: 12.109173000 s
+STAMP eig median: 0.003448000 s (min 0.001996000 s)
+STAMP SSA median: 0.029270500 s (min 0.015755000 s)
+VeraGrid states: 88
+VeraGrid setup: 37.273303512 s
+VeraGrid eig median: 0.002337818 s (min 0.002309191 s)
+VeraGrid SSA median: 0.022265383 s (min 0.022052700 s)
+/home/users/carlos.herrera.vazqu/STAMP_Public/STAMP/02_results/comparison/benchmark_veragrid_multivac.csv

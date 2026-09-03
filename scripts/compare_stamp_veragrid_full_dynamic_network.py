@@ -58,6 +58,10 @@ def main() -> None:
     vg_all=la.eigvals(jac,descriptor); vg=vg_all[np.isfinite(vg_all)]
     stamp=np.loadtxt(ROOT/"STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_A_matrix.csv",delimiter=",")
     stamp_modes=np.linalg.eigvals(stamp)
+    output_dir = ROOT/"STAMP/02_results/comparison"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    np.savetxt(output_dir/"WSCC_SG_GFOR_GFOL_veragrid_full_dynamic_eigenvalues.csv",
+               np.c_[vg.real, vg.imag], delimiter=",", header="real,imag", comments="")
     # gy is nonsingular once capacitor power variables close each bus balance.
     reduced=fx-fy@np.linalg.solve(gy,gx)
     stamp_names=(ROOT/"STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_state_names.txt").read_text().splitlines()

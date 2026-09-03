@@ -13,7 +13,7 @@ Run from this repository with the VeraGrid source tree on `PYTHONPATH`:
 ```bash
 NUMBA_CACHE_DIR=/tmp/veragrid_numba \
 MPLCONFIGDIR=/tmp/matplotlib \
-PYTHONPATH=/home/pablo/Desktop/eroots/VeraGrid_TenSyGrid/src \
+PYTHONPATH=/home/pablo/Desktop/eroots/VeraGrid/src \
 python3 scripts/run_veragrid_stamp_wscc.py \
   --stamp-reference STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_eigenvalues.csv
 ```
@@ -94,3 +94,29 @@ python3 scripts/compare_stamp_veragrid_modes.py \
 The assignment uses a magnitude-scaled complex-plane distance and never reuses
 a candidate mode. The `20 Hz` default classification is based on pole
 magnitude, so fast nonoscillatory filter poles are classified as fast modes.
+
+## Three-phase EMT study
+
+The EMT assembly is in `veragrid_stamp/emt_case.py`. It reuses VeraGrid's abc
+bus, PI-line, and parallel R||L load templates. The SG wrapper retains the
+validated STAMP six-winding/transformer/control equations, and the GFOR/GFOL
+wrapper retains the named q-d controller and LCL states while exposing abc
+terminal voltage and current.
+
+Run the initialization gate and Floquet small-signal study with:
+
+```bash
+NUMBA_OPT=0 python3 scripts/run_veragrid_stamp_wscc_emt.py \
+  --simulation-time 0.04 --assessment-time 0.04 --time-step 2e-5
+```
+
+EMT steady state is a periodic orbit, so the runner compares snapshots one
+50-Hz cycle apart (with unwrapped angle states reduced modulo `2*pi`) and uses
+`SmallSignalStabilityEmtDriver`, not the RMS state-matrix driver. The current
+abc realization initializes with zero device-envelope derivatives, but its
+unperturbed trajectory excites an EMT-only unstable pair. The six-mode run
+finds rightmost Floquet exponents approximately
+`25.622 +/- j100.961 rad/s`. These are not present in the stable 88-state
+positive-sequence STAMP/RMS spectrum. Until the negative-sequence measurement
+path of the converter is specified/filtered and the periodicity check passes,
+the EMT modes must not be presented as an RMS-vs-EMT equivalence result.

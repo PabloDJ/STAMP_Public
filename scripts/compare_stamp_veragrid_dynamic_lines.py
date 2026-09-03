@@ -77,6 +77,9 @@ def main() -> None:
 
     output = ROOT/"STAMP/02_results/comparison/WSCC_SG_GFOR_GFOL_STAMP_dynamic_lines_A.csv"
     np.savetxt(output, stamp_70, delimiter=",")
+    np.savetxt(output.with_name("WSCC_SG_GFOR_GFOL_veragrid_dynamic_lines_eigenvalues.csv"),
+               np.c_[vg_modes.real, vg_modes.imag], delimiter=",",
+               header="real,imag", comments="")
     print(f"wrote {output}")
 
 
