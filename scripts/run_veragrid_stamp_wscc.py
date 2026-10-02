@@ -112,7 +112,8 @@ def audit_initialization(grid, power_flow, small_signal) -> tuple[float, float, 
     return vm_error, va_error, state_error, algebraic_error
 
 
-def run(output: Path, stamp_reference: Path | None) -> None:
+def run(output: Path, stamp_reference: Path | None,
+        nonlinear_converters: bool = False) -> None:
     from VeraGridEngine.Simulations.PowerFlow.power_flow_driver import PowerFlowDriver
     from VeraGridEngine.Simulations.Rms.rms_options import RmsOptions
     from VeraGridEngine.Simulations.Rms.problems.rms_problem_dae import RmsProblemDae
@@ -121,7 +122,7 @@ def run(output: Path, stamp_reference: Path | None) -> None:
     from VeraGridEngine.Devices.Events.rms_events_group import RmsEventsGroup
     import VeraGridEngine.api as vge
 
-    grid = build_stamp_wscc_grid()
+    grid = build_stamp_wscc_grid(nonlinear_converters=nonlinear_converters)
     audit_topology(grid)
     power_flow = PowerFlowDriver(grid, power_flow_options())
     power_flow.run()
@@ -162,9 +163,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=Path("STAMP/02_results/veragrid/WSCC_SG_GFOR_GFOL_eigenvalues.csv"))
     parser.add_argument("--stamp-reference", type=Path)
+    parser.add_argument("--nonlinear-converters", action="store_true",
+                        help="Use the nonlinear GFOR/GFOL equations instead of the STAMP linearized port")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    run(args.output.resolve(), args.stamp_reference.resolve() if args.stamp_reference else None)
+    run(args.output.resolve(), args.stamp_reference.resolve() if args.stamp_reference else None,
+        nonlinear_converters=args.nonlinear_converters)

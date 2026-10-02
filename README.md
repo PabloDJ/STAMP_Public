@@ -35,6 +35,28 @@ stored `PF` worksheet is not the authoritative operating point for this run.
 
 ## STAMP–VeraGrid WSCC comparison
 
+### Nonlinear converter comparison
+
+Run the separate GFOR/GFOL nonlinear-equation comparison with the same
+six-bus power flow and full 88-state dynamic network:
+
+```bash
+python3 scripts/compare_stamp_veragrid_nonlinear_converters.py
+```
+
+It checks the bus voltages and angles against STAMP, reconstructs the converter
+local q-d operating points, checks the full DAE residual, and assigns all 88
+VeraGrid eigenvalues to the STAMP reference. It saves the spectrum to
+`STAMP/02_results/comparison/WSCC_SG_GFOR_GFOL_veragrid_full_dynamic_nonlinear_eigenvalues.csv`.
+The nonlinear converter equations are defined in
+`veragrid_stamp/nonlinear_converters.py`; the established linearized comparison
+continues to use `veragrid_stamp/source_linear_converters.py`.
+
+The comparison maps the nonlinear state coordinates to STAMP's state matrix and
+reports the largest matrix-entry differences. At the current operating point,
+the maximum matrix-entry difference is about `6.54e-5` and the maximum assigned
+eigenvalue difference is about `2.38e-7 1/s`.
+
 The Python bridge is in `veragrid_stamp/`; VeraGrid is an external source
 dependency. Configure its source tree and grid-data root before running:
 

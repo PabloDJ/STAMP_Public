@@ -117,7 +117,8 @@ def _assign_network_rms_models(grid: Any, impedance_loads: bool = False,
 
 def build_stamp_wscc_grid(*, impedance_loads: bool = False,
                           dynamic_lines: bool = False,
-                          full_dynamic_network: bool = False) -> Any:
+                          full_dynamic_network: bool = False,
+                          nonlinear_converters: bool = False) -> Any:
     """Import VeraGrid's six-bus IEEE9 case and populate STAMP RMS models."""
     import VeraGridEngine.api as gce
     from VeraGridEngine.Utils.Symbolic.templates_common_functions import set_rms_model
@@ -172,8 +173,14 @@ def build_stamp_wscc_grid(*, impedance_loads: bool = False,
     reference_omega = next(var for var in sg_template.block.state_vars
                            if var.name == "STAMP_SG1.w_pu")
     for params, converter in converter_devices:
-        template = (get_stamp_gfor_rms(grid.var_factory, reference_omega=reference_omega)
-                    if params.mode == "GFOR"
-                    else get_stamp_gfol_rms(grid.var_factory, reference_omega=reference_omega))
+        if nonlinear_converters:
+            from .nonlinear_converters import build_stamp_converter_rms
+            template = build_stamp_converter_rms(
+                grid.var_factory, params, f"STAMP_{params.mode}{params.number}",
+                reference_omega=reference_omega)
+        else:
+            template = (get_stamp_gfor_rms(grid.var_factory, reference_omega=reference_omega)
+                        if params.mode == "GFOR"
+                        else get_stamp_gfol_rms(grid.var_factory, reference_omega=reference_omega))
         set_rms_model(converter, template.block, grid.var_factory)
     return grid

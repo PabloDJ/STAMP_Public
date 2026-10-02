@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compare the complete 88-state STAMP and VeraGrid dynamic networks."""
 from pathlib import Path
+import argparse
 import sys
 import numpy as np
 import scipy.linalg as la
@@ -11,12 +12,13 @@ from scripts.run_veragrid_stamp_wscc import power_flow_options
 from veragrid_stamp.wscc_case import build_stamp_wscc_grid, STAMP_LOADS
 
 
-def main() -> None:
+def main(nonlinear_converters: bool = False) -> None:
     from VeraGridEngine.Devices.Events.rms_events_group import RmsEventsGroup
     from VeraGridEngine.Simulations.PowerFlow.power_flow_driver import PowerFlowDriver
     from VeraGridEngine.Simulations.Rms.problems.rms_problem_dae import RmsProblemDae
     from VeraGridEngine.Simulations.Rms.rms_options import RmsOptions
-    grid=build_stamp_wscc_grid(dynamic_lines=True,full_dynamic_network=True)
+    grid=build_stamp_wscc_grid(dynamic_lines=True,full_dynamic_network=True,
+                               nonlinear_converters=nonlinear_converters)
     pf=PowerFlowDriver(grid,power_flow_options()); pf.run()
     problem=RmsProblemDae(grid,RmsOptions(time_step=.001),pf.results)
     problem.set_events_group(RmsEventsGroup("full_dynamic_network"))
@@ -60,8 +62,108 @@ def main() -> None:
     stamp_modes=np.linalg.eigvals(stamp)
     output_dir = ROOT/"STAMP/02_results/comparison"
     output_dir.mkdir(parents=True, exist_ok=True)
-    np.savetxt(output_dir/"WSCC_SG_GFOR_GFOL_veragrid_full_dynamic_eigenvalues.csv",
+    suffix="_nonlinear" if nonlinear_converters else ""
+    np.savetxt(output_dir/f"WSCC_SG_GFOR_GFOL_veragrid_full_dynamic{suffix}_eigenvalues.csv",
                np.c_[vg.real, vg.imag], delimiter=",", header="real,imag", comments="")
+    if nonlinear_converters:
+        from scipy.optimize import linear_sum_assignment
+        from scripts.compare_stamp_veragrid_operating_point import converter_point, long_points
+        from veragrid_stamp.parameters import STAMP_GFOR, STAMP_GFOL
+        import csv
+        with (ROOT/"STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_power_flow.csv").open(
+                newline="", encoding="utf-8-sig") as stream:
+            reference_buses=list(csv.DictReader(stream))
+        voltage=np.asarray(pf.results.voltage)
+        vm_error=max(abs(abs(v)-float(row["Vm"])) for v,row in zip(voltage,reference_buses))
+        va_error=max(abs(np.angle(v)-np.deg2rad(float(row["theta"])))
+                     for v,row in zip(voltage,reference_buses))
+        vsc_ref=long_points(ROOT/"STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_vsc_linearization_point.csv")
+        vsc_errors=[]
+        for device,params in enumerate((STAMP_GFOR,STAMP_GFOL),1):
+            bus_index=buses[params.bus]
+            point=converter_point(abs(voltage[bus_index]),np.angle(voltage[bus_index]),
+                                  params.p_pu_system,pf.results.Sbus[bus_index].imag/grid.Sbase)
+            vsc_errors.extend(abs(value-vsc_ref[(device,field)]) for field,value in point.items())
+        state_error=np.max(np.abs(problem.rhs_state(vector,np.zeros_like(vector))))
+        alg_error=np.max(np.abs(problem.rhs_algebraic(vector,np.zeros_like(vector))))
+        print(f"PF errors: Vm={vm_error:.12g}, Va={va_error:.12g} rad")
+        print(f"VSC operating-point q-d error: {max(vsc_errors):.12g}")
+        print(f"initial residuals: state={state_error:.12g}, algebraic={alg_error:.12g}")
+        if max(vm_error,va_error,max(vsc_errors),state_error,alg_error)>1e-7:
+            residual=np.asarray(problem.rhs_state(vector,np.zeros_like(vector)))
+            for i in np.argsort(np.abs(residual))[-8:][::-1]:
+                print(f"  residual {problem.state_vars[i]}={residual[i]:+.12g}")
+            raise RuntimeError("Nonlinear comparison operating point does not match STAMP")
+        cost=np.abs(stamp_modes[:,None]-vg[None,:])
+        rows,cols=linear_sum_assignment(cost)
+        matched=cost[rows,cols]
+        print(f"mode count: STAMP={len(stamp_modes)}, VeraGrid={len(vg)}")
+        print(f"eigenvalue assignment error: median={np.median(matched):.12g}, max={max(matched):.12g}")
+        print(f"rightmost: STAMP={stamp_modes[np.argmax(stamp_modes.real)]:.12g}, "
+              f"VeraGrid={vg[np.argmax(vg.real)]:.12g}")
+        reduced=fx-fy@np.linalg.solve(gy,gx)
+        stamp_names=(ROOT/"STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_state_names.txt").read_text().splitlines()
+        def canonical_nonlinear(name: str) -> str:
+            name=(name.replace("STAMP_SG1.","SG1.").replace("STAMP_GFOR1.","GFOR1.")
+                      .replace("STAMP_GFOL2.","GFOL2."))
+            for device in ("GFOR1", "GFOL2"):
+                aliases={"theta":"etheta_x", "p_filt":"p_filt_x", "q_filt":"q_filt_x",
+                         "w_filt":"w_filt_x", "igd_ff":"igd_ff_x", "igq_ff":"igq_ff_x"}
+                for old,new in aliases.items():
+                    if name==f"{device}.{old}": return f"{device}.{new}"
+            if name=="SG1.ig_q": return "SG1.ig_qx"
+            if name=="SG1.ig_d": return "SG1.ig_dx"
+            if name.startswith("NET.") and name.endswith(".iq"):
+                return "NET.iq"+name.split('.')[1]
+            if name.startswith("NET.") and name.endswith(".id"):
+                return "NET.id"+name.split('.')[1]
+            if name.startswith("STAMP bus capacitor "):
+                bus=name.split()[3].split('.')[0]
+                return f"vc_{'q' if name.endswith('.vc_q') else 'd'}{bus}"
+            return name
+        vg_names=[canonical_nonlinear(str(var)) for var in problem.state_vars]
+        order=[vg_names.index(name) for name in stamp_names]
+        ordered=reduced[np.ix_(order,order)]
+        ni={name:i for i,name in enumerate(stamp_names)}
+        transform=np.eye(nx)
+        with (ROOT/"STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_sg_linearization_point.csv").open(
+                newline="",encoding="utf-8-sig") as stream:
+            lp={row['field']:float(row['value']) for row in csv.DictReader(stream)}
+        shift=np.arctan2(-lp['vd_bus0'],lp['vq_bus0'])
+        cs,sn=np.cos(shift),np.sin(shift)
+        rotation=np.asarray([[cs,sn],[-sn,cs]])
+        fixed_pairs=[(f"NET.iq{edge}",f"NET.id{edge}") for edge in ('12','13','24','36','45','56')]
+        fixed_pairs += [(f"vc_q{bus}",f"vc_d{bus}") for bus in range(1,7)]
+        fixed_pairs += [(f"Load{load}.ilq",f"Load{load}.ild") for load in range(1,4)]
+        fixed_pairs += [("SG1.ig_qx","SG1.ig_dx")]
+        for qname,dname in fixed_pairs:
+            scale=np.sqrt(2/3) if not qname.startswith("SG1.") else 1.0
+            transform[np.ix_([ni[qname],ni[dname]],[ni[qname],ni[dname]])]=scale*rotation
+        for device in ("GFOR1","GFOL2"):
+            for base in ("ig","is","ucap"):
+                qname,dname=f"{device}.{base}_q",f"{device}.{base}_d"
+                ids=[ni[qname],ni[dname]]
+                transform[np.ix_(ids,ids)]=rotation
+        from veragrid_stamp.parameters import STAMP_GFOR, STAMP_GFOL, OMEGA_BASE
+        transform[ni['GFOR1.p_filt_x'],ni['GFOR1.p_filt_x']]=STAMP_GFOR.frequency_droop_tau
+        transform[ni['GFOR1.q_filt_x'],ni['GFOR1.q_filt_x']]=-STAMP_GFOR.voltage_droop_tau
+        for base in ('igd','igq'):
+            name=f'GFOR1.{base}_ff_x'
+            transform[ni[name],ni[name]]=STAMP_GFOR.current_feedforward_tau
+        transform[ni['GFOL2.w_filt_x'],ni['GFOL2.w_filt_x']]=OMEGA_BASE*STAMP_GFOL.frequency_droop_tau
+        transform[ni['GFOL2.q_filt_x'],ni['GFOL2.q_filt_x']]=-STAMP_GFOL.voltage_droop_tau
+        mapped=transform@ordered@np.linalg.inv(transform)
+        difference=mapped-stamp
+        print(f"mapped Jacobian difference: max={np.max(np.abs(difference)):.12g}, "
+              f"RMS={np.sqrt(np.mean(difference*difference)):.12g}")
+        for flat in np.argsort(np.abs(difference),axis=None)[-15:][::-1]:
+            row,col=np.unravel_index(flat,difference.shape)
+            print(f"  d({stamp_names[row]})/d({stamp_names[col]}): "
+                  f"VG={mapped[row,col]:+.9g}, STAMP={stamp[row,col]:+.9g}, "
+                  f"error={difference[row,col]:+.9g}")
+        if np.max(np.abs(difference)) > 1e-3 or np.max(matched) > 1e-5:
+            raise RuntimeError("Nonlinear converter Jacobian or eigenvalues differ from STAMP")
+        return
     # gy is nonsingular once capacitor power variables close each bus balance.
     reduced=fx-fy@np.linalg.solve(gy,gx)
     stamp_names=(ROOT/"STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_state_names.txt").read_text().splitlines()
@@ -117,4 +219,7 @@ def main() -> None:
         print(f"{label}: unstable={np.count_nonzero(modes.real>1e-8)}, "
               f"rightmost={modes[np.argmax(modes.real)]:.12g}")
 
-if __name__=="__main__": main()
+if __name__=="__main__":
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--nonlinear-converters", action="store_true")
+    main(parser.parse_args().nonlinear_converters)
