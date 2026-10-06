@@ -58,7 +58,9 @@ the maximum matrix-entry difference is about `6.54e-5` and the maximum assigned
 eigenvalue difference is about `2.38e-7 1/s`.
 
 The Python bridge is in `veragrid_stamp/`; VeraGrid is an external source
-dependency. Configure its source tree and grid-data root before running:
+dependency. The starting network is bundled at
+`veragrid_stamp/data/IEEE_9_Christoph.gridcal`, so the VeraGrid checkout only
+needs to provide the Python source. Configure its source tree before running:
 
 ```bash
 export VERAGRID_ROOT=/path/to/VeraGrid

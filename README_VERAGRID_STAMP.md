@@ -8,12 +8,13 @@ The case is the reduced six-bus WSCC/IEEE-9 topology used by STAMP: one AC4A +
 IEEEG1 synchronous generator at bus 1, one grid-forming converter at bus 4,
 one grid-following converter at bus 6, six dynamic pi lines, and three loads.
 
-Run from this repository with the VeraGrid source tree on `PYTHONPATH`:
+Run from this repository with the VeraGrid source tree on `PYTHONPATH`.
+The grid case is bundled at `veragrid_stamp/data/IEEE_9_Christoph.gridcal`:
 
 ```bash
 NUMBA_CACHE_DIR=/tmp/veragrid_numba \
 MPLCONFIGDIR=/tmp/matplotlib \
-PYTHONPATH=/home/pablo/Desktop/eroots/VeraGrid/src \
+PYTHONPATH=/path/to/VeraGrid/src:$PWD \
 python3 scripts/run_veragrid_stamp_wscc.py \
   --stamp-reference STAMP/02_results/multivac/WSCC_SG_GFOR_GFOL_eigenvalues.csv
 ```
