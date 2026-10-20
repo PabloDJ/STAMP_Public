@@ -64,6 +64,8 @@ def main() -> None:
     parser.add_argument("--assessment-time", type=float, default=0.06)
     parser.add_argument("--modes", type=int, default=20)
     parser.add_argument("--skip-ssa", action="store_true")
+    parser.add_argument("--nonlinear-converters", action="store_true",
+                        help="Use the full nonlinear GFOR/GFOL q-d blocks")
     args = parser.parse_args()
 
     from VeraGridEngine.Simulations.EMT.emt_options import EmtOptions
@@ -76,7 +78,8 @@ def main() -> None:
     from VeraGridEngine.Simulations.SmallSignalStabilityEmt.small_signal_stability_emt_options import SmallSignalStabilityEmtOptions
     from VeraGridEngine.enumerations import DynamicIntegrationMethod, EmtInitializationMethod, EmtSolverTypes
 
-    grid = build_stamp_wscc_emt_grid()
+    grid = build_stamp_wscc_emt_grid(nonlinear_converters=args.nonlinear_converters)
+    print(f"EMT converter model: {'nonlinear' if args.nonlinear_converters else 'linearized'}")
     pf_options = PowerFlowOptions(retry_with_other_methods=True)
     pf = PowerFlowDriver(grid=grid, options=pf_options); pf.run()
     pf3 = PowerFlowDriver3Ph(grid=grid, options=pf_options); pf3.run()
@@ -166,10 +169,9 @@ def main() -> None:
     # peak deviation and endpoint deviation from the explicit initial value.
     gfol2 = next(generator for generator in grid.generators
                  if generator.name == "STAMP GFOL2")
-    gfol2_angle = next(
-        variable for variable in gfol2.emt_model.get_all_vars()
-        if ".etheta_x" in variable.name and variable.uid in problem.uid2idx_vars
-    )
+    gfol2_angle = next(variable for variable in gfol2.emt_model.get_all_vars()
+                       if (variable.name.endswith((".etheta_x", ".theta"))
+                           and variable.uid in problem.uid2idx_vars))
     angle_trace = values[:, problem.get_var_idx(gfol2_angle)]
     complete_cycles = (len(angle_trace)-1)//cycle_steps
     for cycle in range(complete_cycles):
@@ -183,8 +185,14 @@ def main() -> None:
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True, constrained_layout=True)
     for generator in grid.generators:
         variables = generator.emt_model.get_all_vars()
-        for axis, prefix in zip(axes, ("omega_", ".etheta_x", ".ig_q")):
-            var = next((v for v in variables if prefix in v.name and v.uid in problem.uid2idx_vars), None)
+        selectors = (
+            lambda name: "omega_" in name or name.endswith(".w_pu"),
+            lambda name: name.endswith((".etheta_x", ".theta")),
+            lambda name: name.endswith(".ig_q"),
+        )
+        for axis, matches in zip(axes, selectors):
+            var = next((v for v in variables
+                        if matches(v.name) and v.uid in problem.uid2idx_vars), None)
             if var is not None:
                 axis.plot(1e3*time, values[:, problem.get_var_idx(var)], label=generator.name)
     axes[0].set_ylabel("speed (p.u.)"); axes[1].set_ylabel("angle state"); axes[2].set_ylabel("grid i_q dev.")
@@ -192,7 +200,8 @@ def main() -> None:
     for axis in axes:
         axis.grid(True, alpha=.3)
         if axis.lines: axis.legend()
-    plot_path = Path(__file__).with_name("stamp_wscc_emt_steady_state.png")
+    model_suffix = "_nonlinear" if args.nonlinear_converters else ""
+    plot_path = Path(__file__).with_name(f"stamp_wscc_emt_steady_state{model_suffix}.png")
     fig.savefig(plot_path, dpi=180); plt.close(fig)
     print(f"plot={plot_path}")
 
@@ -256,7 +265,8 @@ def main() -> None:
         if axis.lines:
             axis.legend(ncol=4, fontsize=7)
     axes[0].set_title("STAMP WSCC EMT — first integration steps")
-    first_plot_path = Path(__file__).with_name("stamp_wscc_emt_first_iterations.png")
+    first_plot_path = Path(__file__).with_name(
+        f"stamp_wscc_emt_first_iterations{model_suffix}.png")
     fig.savefig(first_plot_path, dpi=180); plt.close(fig)
     print(f"first-iterations-plot={first_plot_path}")
 
@@ -264,10 +274,52 @@ def main() -> None:
         sss_options = SmallSignalStabilityEmtOptions(k=min(args.modes, problem.get_states_number()-2),
             target_period=1.0/grid.fBase, ss_assessment_time=args.assessment_time, verbose=1)
         driver = SmallSignalStabilityEmtDriver(grid=grid, emt_options=options,
-                                               sss_options=sss_options, pf_results=pf3.results)
+                                               sss_options=sss_options, pf_results=pf.results)
         driver.run()
         exponents = np.asarray(driver.results.eigenvalues)
         order = np.argsort(exponents.real)[::-1]
+        spectrum_suffix = "_nonlinear" if args.nonlinear_converters else ""
+        spectrum_csv = Path(__file__).with_name(
+            f"stamp_wscc_emt_floquet_exponents{spectrum_suffix}.csv")
+        np.savetxt(spectrum_csv,
+                   np.column_stack((exponents.real, exponents.imag)),
+                   delimiter=",", header="real,imag", comments="")
+        rms_path = (Path(__file__).resolve().parents[1] /
+                    "STAMP/02_results/comparison/WSCC_SG_GFOR_GFOL_veragrid_full_dynamic_eigenvalues.csv")
+        rms_data = np.loadtxt(rms_path, delimiter=",", skiprows=1)
+        rms_modes = rms_data[:, 0] + 1j*rms_data[:, 1]
+        omega_base = 2.0*np.pi*grid.fBase
+        rms_modes = rms_modes.real + 1j*((rms_modes.imag+omega_base/2.0)
+                                         % omega_base-omega_base/2.0)
+        fig, axes = plt.subplots(1, 2, figsize=(12.8, 5.3),
+                                 constrained_layout=True)
+        for axis in axes:
+            axis.scatter(rms_modes.real, rms_modes.imag, marker="x", s=34,
+                         linewidths=1.1, color="#2166ac",
+                         label="VeraGrid RMS (88 states)")
+            axis.scatter(exponents.real, exponents.imag, marker="o", s=42,
+                         facecolors="none", edgecolors="#b2182b",
+                         linewidths=1.3,
+                         label=f"EMT Floquet ({len(exponents)} rightmost)")
+            axis.axvline(0.0, color="black", linewidth=.8, linestyle="--")
+            axis.axhline(0.0, color="0.65", linewidth=.7)
+            axis.grid(True, alpha=.25)
+            axis.set_xlabel(r"Real part, $\sigma$ [s$^{-1}$]")
+            axis.set_ylabel(r"Imaginary part, $\omega$ [rad/s]")
+        axes[0].set_title("Folded RMS and computed EMT modes")
+        axes[1].set_title("Rightmost modes")
+        axes[1].set_xlim(-2.0, .25)
+        axes[1].set_ylim(-12.0, 12.0)
+        axes[0].legend(loc="best")
+        fig.suptitle("STAMP WSCC: " +
+                     ("nonlinear" if args.nonlinear_converters else "linearized") +
+                     " converter EMT Floquet spectrum")
+        spectrum_plot = Path(__file__).with_name(
+            f"stamp_wscc_emt_floquet_spectrum{spectrum_suffix}.png")
+        fig.savefig(spectrum_plot, dpi=180)
+        plt.close(fig)
+        print(f"Floquet CSV={spectrum_csv}")
+        print(f"Floquet plot={spectrum_plot}")
         print("Floquet exponents (rightmost first):")
         for value in exponents[order]:
             print(f"{value.real:+.12e} {value.imag:+.12e}j")

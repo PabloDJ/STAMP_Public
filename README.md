@@ -4,8 +4,9 @@ STAMP is a MATLAB toolbox for automatic EMT modelling, time-domain simulation,
 and small-signal stability analysis of hybrid AC/DC power systems. It was
 developed at CITCEA-UPC, Universitat Politècnica de Catalunya.
 
-This working repository also contains a VeraGrid port and validation workflow
-for the STAMP `WSCC_SG_GFOR_GFOL` case. The comparison reproduces the same
+This fork of [CITCEA-UPC/STAMP_Public](https://github.com/CITCEA-UPC/STAMP_Public)
+adds a VeraGrid port and validation workflow for the STAMP
+`WSCC_SG_GFOR_GFOL` case. The comparison reproduces the same
 topology, operating point, 88 differential states, initialization, Jacobian,
 and eigenvalue spectrum in both tools.
 
@@ -86,6 +87,56 @@ build_stamp_wscc_grid(
     full_dynamic_network=True,
 )
 ```
+
+Add `nonlinear_converters=True` to this call for the nonlinear GFOR/GFOL
+comparison.
+
+### How the dynamic and nonlinear models are copied
+
+`veragrid_stamp/wscc_case.py` opens the bundled grid file as the starting six-bus
+topology, sets the 100 MVA, 50 Hz STAMP base, replaces the stored load and
+generator dispatch with the STAMP case values, and adds the
+GFOR bus-4 and GFOL bus-6 generators as PV power-flow devices. It then attaches
+custom VeraGrid RMS `Block` models with `set_rms_model`; these equations are
+ported from STAMP, rather than being VeraGrid's stock dynamic templates.
+
+With `dynamic_lines=True`, each of the six `Line` devices gets the
+`veragrid_stamp/dynamic_line.py` series-RL model. Its two differential states
+are synchronous-frame `iq` and `id`, driven by the from/to q-d voltage
+difference, resistance `R`, reactance `X`, and `omega_base = 2*pi*50`. The
+four algebraic equations return the from/to P and Q injections to VeraGrid's
+network. When `full_dynamic_network=False`, each end also contributes its
+algebraic `B/2` charging current. When it is true, those charging terms are
+removed from the line equations and summed at each bus instead, avoiding
+double counting.
+
+With `full_dynamic_network=True`, `veragrid_stamp/dynamic_network.py` replaces
+the three physical loads with dynamic parallel-RL models. Each load has two
+inductor-current states (`ilq`, `ild`) and a conductance branch. Case P and Q
+and the solved power-flow voltage set its equilibrium conductance
+`G=P/|V|^2` and inverse inductance `1/L=omega_base*Q/|V|^2` in per unit; the algebraic P/Q
+outputs use VeraGrid's injection sign convention. The same switch adds one
+zero-power `Load` device per bus as an interface for a dynamic shunt capacitor.
+Its susceptance is the sum of the incident line `B/2` values, and its two
+states (`vc_q`, `vc_d`) are constrained to the bus q-d voltage by algebraic
+equations. The line, load, and capacitor blocks contribute 12, 6, and 12
+differential states, respectively. The full-network comparison explicitly
+initializes them from the solved power flow and solves the remaining algebraic
+variables before forming the 88-state DAE Jacobian.
+
+The synchronous generator always uses the nonlinear STAMP rotor-circuit,
+AC4A exciter, and IEEEG1 governor port in
+`veragrid_stamp/nonlinear_generator.py` (17 states). By default the GFOR and
+GFOL devices use the source-linear converter blocks in
+`veragrid_stamp/source_linear_converters.py`. Set
+`nonlinear_converters=True` to attach the full equations in
+`veragrid_stamp/nonlinear_converters.py` instead (21 and 20 states). These
+include the transformer and damped LCL filter, delayed current and voltage
+measurements, current controllers, GFOR voltage and frequency droop, and GFOL
+PLL and P/Q control. The nonlinear blocks initialize their q-d currents,
+capacitor voltages, controller states, and references from VeraGrid's solved
+terminal P/Q/voltage; bus RMS line-to-line voltage is converted to STAMP's
+peak phase-voltage base inside the converter model.
 
 ### Parameter sources
 
@@ -204,12 +255,62 @@ Generate the runtime plot with:
 python3 scripts/plot_ssa_benchmarks.py
 ```
 
-## Experimental EMT model
+## Three-phase EMT study
 
-The three-phase EMT assembly under `veragrid_stamp/emt_case.py` is
-experimental and is not part of the validated RMS equivalence. Its periodic
-steady-state initialization remains under investigation; EMT modes should not
-currently be presented as an RMS-versus-EMT equivalence result.
+The EMT assembly is in `veragrid_stamp/emt_case.py`. It reuses VeraGrid's abc
+bus, PI-line, and parallel R||L load templates. The SG wrapper retains the
+validated STAMP six-winding/transformer/control equations, and the GFOR/GFOL
+wrapper retains the named q-d controller and LCL states while exposing abc
+terminal voltage and current.
+
+By default the EMT case uses the linearized-deviation GFOR/GFOL wrapper in
+`veragrid_stamp/emt_converters.py`. Run its initialization gate and Floquet
+small-signal study with:
+
+```bash
+NUMBA_OPT=0 python3 scripts/run_veragrid_stamp_wscc_emt.py \
+  --simulation-time 0.04 --assessment-time 0.04 --time-step 2e-5
+```
+
+EMT steady state is a periodic orbit, so the runner compares snapshots one
+50-Hz cycle apart (with unwrapped angle states reduced modulo `2*pi`) and uses
+`SmallSignalStabilityEmtDriver`, not the RMS state-matrix driver. This
+linearized wrapper initializes with zero device-envelope derivatives, but its
+unperturbed trajectory excites an EMT-only unstable pair. Its six-mode run
+finds rightmost Floquet exponents of approximately
+`25.622 +/- j100.961 rad/s`.
+
+The full nonlinear converter equations can instead be connected to the abc
+network with:
+
+```bash
+NUMBA_OPT=0 python3 scripts/run_veragrid_stamp_wscc_emt.py \
+  --nonlinear-converters \
+  --simulation-time 0.04 --assessment-time 0.04 --time-step 2e-5 --modes 6
+```
+
+This selects `veragrid_stamp/emt_nonlinear_converters.py`, which wraps the same
+nonlinear GFOR/GFOL q-d equations used by the RMS comparison. The wrapper now
+passes the synchronous generator speed into those equations, matching both the
+RMS and linearized EMT frame references. Before that correction, the nonlinear
+EMT run used a fixed `1.0 pu` frame speed and its dominant mode was near
+`-0.2305 s^-1`, rather than the STAMP RMS value `-0.197765 s^-1`.
+
+With the corrected nonlinear `.veragrid` grid and periodic state saved in
+`veragrid_stamp/data/`, the full monodromy benchmark in the VeraGrid repository
+(`benchmarks/stamp_wscc/run_emt.py`) closes the orbit within `9.8e-10`. Its
+10 rightmost matched modes differ from STAMP RMS by at most `0.00204335 s^-1`;
+the dominant EMT mode is `-0.197657 s^-1`. This is case-specific validation;
+the extra EMT modes are not forced into a one-to-one RMS comparison.
+
+Each Floquet run writes its exponents and RMS-comparison plot under `scripts/`.
+The nonlinear outputs are `stamp_wscc_emt_floquet_exponents_nonlinear.csv` and
+`stamp_wscc_emt_floquet_spectrum_nonlinear.png`. The corrected full-monodromy
+nonlinear result is saved separately as
+`scripts/stamp_wscc_nonlinear_full_emt_floquet_exponents.csv` and
+`scripts/stamp_wscc_nonlinear_full_emt_spectrum.png`. The older 88-state
+tangent-reduction plot uses the linearized converter wrapper; its clarified
+filename is `scripts/stamp_wscc_linearized_tangent_spectrum.png`.
 
 ## License
 

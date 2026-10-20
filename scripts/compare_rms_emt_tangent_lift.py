@@ -183,7 +183,7 @@ def _plot_spectra(reduced: np.ndarray, rms: np.ndarray, period: float,
             axis.set_xlim(*x_limits)
             axis.set_ylim(-12.0, 12.0)
     axes[0].legend(loc="best")
-    figure.suptitle("STAMP WSCC: corrected RMS–EMT small-signal comparison")
+    figure.suptitle("STAMP WSCC: linearized EMT tangent reduction against RMS")
     figure.savefig(output_path, dpi=180)
     plt.close(figure)
 
@@ -241,7 +241,7 @@ def main() -> None:
     np.save(ROOT / "scripts/stamp_wscc_rms_emt_tangent_lift.npy", lift)
     np.save(ROOT / "scripts/stamp_wscc_emt_reduced_monodromy.npy", reduced)
     np.save(ROOT / "scripts/stamp_wscc_rms_monodromy.npy", rms)
-    plot_path = ROOT / "scripts/stamp_wscc_corrected_rms_emt_spectrum.png"
+    plot_path = ROOT / "scripts/stamp_wscc_linearized_tangent_spectrum.png"
     _plot_spectra(reduced, rms, period, plot_path)
     print(f"saved spectrum plot: {plot_path}")
 

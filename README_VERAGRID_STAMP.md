@@ -1,6 +1,6 @@
 # STAMP–VeraGrid WSCC small-signal bridge
 
-This repository contains the reference STAMP model and a Python bridge for
+This fork contains the reference STAMP model and a Python bridge for
 rebuilding the `WSCC_SG_GFOR_GFOL` case in VeraGrid. The bridge lives in
 `veragrid_stamp/`; VeraGrid itself remains an external dependency.
 
@@ -8,8 +8,8 @@ The case is the reduced six-bus WSCC/IEEE-9 topology used by STAMP: one AC4A +
 IEEEG1 synchronous generator at bus 1, one grid-forming converter at bus 4,
 one grid-following converter at bus 6, six dynamic pi lines, and three loads.
 
-Run from this repository with the VeraGrid source tree on `PYTHONPATH`.
-The grid case is bundled at `veragrid_stamp/data/IEEE_9_Christoph.gridcal`:
+Run from this repository with the VeraGrid source tree on `PYTHONPATH`. The grid case is bundled
+at `veragrid_stamp/data/IEEE_9_Christoph.gridcal`:
 
 ```bash
 NUMBA_CACHE_DIR=/tmp/veragrid_numba \
@@ -104,7 +104,9 @@ validated STAMP six-winding/transformer/control equations, and the GFOR/GFOL
 wrapper retains the named q-d controller and LCL states while exposing abc
 terminal voltage and current.
 
-Run the initialization gate and Floquet small-signal study with:
+By default the EMT case uses the linearized-deviation GFOR/GFOL wrapper in
+`veragrid_stamp/emt_converters.py`. Run its initialization gate and Floquet
+small-signal study with:
 
 ```bash
 NUMBA_OPT=0 python3 scripts/run_veragrid_stamp_wscc_emt.py \
@@ -113,11 +115,40 @@ NUMBA_OPT=0 python3 scripts/run_veragrid_stamp_wscc_emt.py \
 
 EMT steady state is a periodic orbit, so the runner compares snapshots one
 50-Hz cycle apart (with unwrapped angle states reduced modulo `2*pi`) and uses
-`SmallSignalStabilityEmtDriver`, not the RMS state-matrix driver. The current
-abc realization initializes with zero device-envelope derivatives, but its
-unperturbed trajectory excites an EMT-only unstable pair. The six-mode run
-finds rightmost Floquet exponents approximately
-`25.622 +/- j100.961 rad/s`. These are not present in the stable 88-state
-positive-sequence STAMP/RMS spectrum. Until the negative-sequence measurement
-path of the converter is specified/filtered and the periodicity check passes,
-the EMT modes must not be presented as an RMS-vs-EMT equivalence result.
+`SmallSignalStabilityEmtDriver`, not the RMS state-matrix driver. This
+linearized wrapper initializes with zero device-envelope derivatives, but its
+unperturbed trajectory excites an EMT-only unstable pair. Its six-mode run
+finds rightmost Floquet exponents of approximately
+`25.622 +/- j100.961 rad/s`.
+
+The full nonlinear converter equations can instead be connected to the abc
+network with:
+
+```bash
+NUMBA_OPT=0 python3 scripts/run_veragrid_stamp_wscc_emt.py \
+  --nonlinear-converters \
+  --simulation-time 0.04 --assessment-time 0.04 --time-step 2e-5 --modes 6
+```
+
+This selects `veragrid_stamp/emt_nonlinear_converters.py`, which wraps the same
+nonlinear GFOR/GFOL q-d equations used by the RMS comparison. The wrapper now
+passes the synchronous generator speed into those equations, matching both the
+RMS and linearized EMT frame references. Before that correction, the nonlinear
+EMT run used a fixed `1.0 pu` frame speed and its dominant mode was near
+`-0.2305 s^-1`, rather than the STAMP RMS value `-0.197765 s^-1`.
+
+With the corrected nonlinear `.veragrid` grid and periodic state saved in
+`veragrid_stamp/data/`, the full monodromy benchmark in the VeraGrid repository
+(`benchmarks/stamp_wscc/run_emt.py`) closes the orbit within `9.8e-10`. Its
+10 rightmost matched modes differ from STAMP RMS by at most `0.00204335 s^-1`;
+the dominant EMT mode is `-0.197657 s^-1`. This is case-specific validation;
+the extra EMT modes are not forced into a one-to-one RMS comparison.
+
+Each Floquet run writes its exponents and RMS-comparison plot under `scripts/`.
+The nonlinear outputs are `stamp_wscc_emt_floquet_exponents_nonlinear.csv` and
+`stamp_wscc_emt_floquet_spectrum_nonlinear.png`. The corrected full-monodromy
+nonlinear result is saved separately as
+`scripts/stamp_wscc_nonlinear_full_emt_floquet_exponents.csv` and
+`scripts/stamp_wscc_nonlinear_full_emt_spectrum.png`. The older 88-state
+tangent-reduction plot uses the linearized converter wrapper; its clarified
+filename is `scripts/stamp_wscc_linearized_tangent_spectrum.png`.

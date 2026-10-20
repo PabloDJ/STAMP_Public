@@ -43,7 +43,7 @@ def _adapt_parallel_rl_load_periodic_initialization(grid, model):
     return model
 
 
-def build_stamp_wscc_emt_grid():
+def build_stamp_wscc_emt_grid(*, nonlinear_converters: bool = False):
     """Import the validated topology and populate all abc EMT device models."""
     from VeraGridEngine.Templates.Emt.load_RLC_emt_template import get_shunt_rlc_combo_emt_template
     from VeraGridEngine.Templates.Emt.pi_line_emt_template import get_pi_line_emt_template
@@ -81,8 +81,14 @@ def build_stamp_wscc_emt_grid():
 
     for params in (STAMP_GFOR, STAMP_GFOL):
         device = generators[f"STAMP {params.mode}{params.number}"]
-        model = build_stamp_converter_emt(grid.var_factory, params,
-                                          f"STAMP_{params.mode}{params.number}_EMT",
-                                          reference_omega=omega_ref)
+        if nonlinear_converters:
+            from .emt_nonlinear_converters import build_stamp_nonlinear_converter_emt
+            model = build_stamp_nonlinear_converter_emt(
+                grid.var_factory, params, f"STAMP_{params.mode}{params.number}_EMT",
+                reference_omega=omega_ref)
+        else:
+            model = build_stamp_converter_emt(grid.var_factory, params,
+                                              f"STAMP_{params.mode}{params.number}_EMT",
+                                              reference_omega=omega_ref)
         set_emt_model(device, model.block, grid.var_factory)
     return grid
