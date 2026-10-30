@@ -39,9 +39,9 @@ def build_stamp_source_linear_converter(vf: Any, p: StampConverterParameters, na
     ucapq0=(uq0-cap_a*ud0)/(c(1)+cap_a*cap_a)
     ucapd0=(cap_a*uq0+ud0)/(c(1)+cap_a*cap_a)
     isq0=igq0+cac*wb*ucapd0; isd0=igd0-cac*wb*ucapq0
-    # VeraGrid's symbolic atan2 API takes Cartesian (x, y), unlike NumPy's
-    # atan2(y, x).  This compiles to -atan2(u_d, u_q), as required by STAMP.
-    theta0=-sym.atan2(uq0,ud0); ct=sym.cos(theta0); st=sym.sin(theta0)
+    # Use the same local-frame angle as the nonlinear converter. The symbolic
+    # operation follows atan2(y, x), so the d component is the first argument.
+    theta0=-sym.atan2(ud0,uq0); ct=sym.cos(theta0); st=sym.sin(theta0)
 
     # Deviation states; physical names follow STAMP's exported state list.
     isq_m=vf.add_var(f"{name}.isq_md"); isd_m=vf.add_var(f"{name}.isd_md")
