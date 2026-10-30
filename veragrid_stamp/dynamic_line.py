@@ -33,9 +33,14 @@ def build_stamp_dynamic_line_rms(vf: Any, *, resistance: float, reactance: float
     half_b = c(0.0 if dynamic_shunts else shunt_susceptance/2.0)
     ifq, ifd = iq+half_b*vfd, id_-half_b*vfq
     itq, itd = -iq+half_b*vtd, -id_-half_b*vtq
-    v2f = vfq*vfq+vfd*vfd+c(1e-12)
-    total_ifq = (pf*vfq-qf*vfd)/v2f
-    total_ifd = (pf*vfd+qf*vfq)/v2f
+    # Initialize the series current from the terminal-voltage difference.
+    # PF branch powers include charging, whereas the runtime line may assign
+    # that charging to separate bus capacitors. Voltage-based initialization
+    # works for both arrangements and avoids a P/Q-to-current dependency cycle.
+    dvq, dvd = vfq-vtq, vfd-vtd
+    impedance_squared = c(resistance*resistance+reactance*reactance)
+    iq0 = (c(resistance)*dvq-c(reactance)*dvd)/impedance_squared
+    id0 = (c(reactance)*dvq+c(resistance)*dvd)/impedance_squared
 
     state_eqs = [
         c(OMEGA_BASE/reactance)*(vfq-vtq-c(resistance)*iq-c(reactance)*id_),
@@ -50,7 +55,11 @@ def build_stamp_dynamic_line_rms(vf: Any, *, resistance: float, reactance: float
     block = Block(
         state_vars=[iq, id_], state_eqs=state_eqs,
         algebraic_vars=[pf, qf, pt, qt], algebraic_eqs=algebraic_eqs,
-        init_eqs={iq: total_ifq-half_b*vfd, id_: total_ifd+half_b*vfq},
+        init_eqs={iq: iq0, id_: id0,
+                  pf: vfq*ifq+vfd*ifd,
+                  qf: vfq*ifd-vfd*ifq,
+                  pt: vtq*itq+vtd*itd,
+                  qt: vtq*itd-vtd*itq},
         in_vars=[vmf, vaf, vmt, vat], out_vars=[pf, pt, qf, qt],
         external_mapping={
             VarPowerFlowReferenceType.Vmf: vmf, VarPowerFlowReferenceType.Vaf: vaf,

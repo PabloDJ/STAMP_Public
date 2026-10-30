@@ -65,7 +65,9 @@ def build_dynamic_bus_capacitor_rms(vf: Any, *, susceptance: float, name: str) -
         state_eqs=[c(OMEGA_BASE/susceptance)*iq-c(OMEGA_BASE)*vd,
                    c(OMEGA_BASE/susceptance)*id_+c(OMEGA_BASE)*vq],
         algebraic_vars=[pl, ql], algebraic_eqs=[vq-bus_q, vd-bus_d],
-        init_eqs={vq: bus_q, vd: bus_d}, in_vars=[vm, va], out_vars=[pl, ql],
+        init_eqs={vq: bus_q, vd: bus_d,
+                  pl: c(0.0), ql: c(susceptance)*vm*vm},
+        in_vars=[vm, va], out_vars=[pl, ql],
         external_mapping={VarPowerFlowReferenceType.Vm: vm, VarPowerFlowReferenceType.Va: va,
                           VarPowerFlowReferenceType.P: pl, VarPowerFlowReferenceType.Q: ql},
         name=name)
